@@ -1,0 +1,50 @@
+name: Build Typst
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: typst-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Typst
+        uses: typst-community/setup-typst@v5
+
+      - name: Install Just
+        uses: extractions/setup-just@v3
+
+      - name: Build documents
+        run: just build
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view latest >/dev/null 2>&1; then
+            gh api \
+              --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/git/refs/tags/latest" \
+              -f sha="${GITHUB_SHA}" \
+              -F force=true
+
+            gh release upload latest output/* --clobber
+          else
+            gh release create latest output/* \
+              --title "Latest Build" \
+              --notes "Automatically generated Typst documents." \
+              --target "${GITHUB_SHA}" \
+              --latest
+          fi
